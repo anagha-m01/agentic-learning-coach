@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const BASE = "http://localhost:8000";
+const BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 export const analyzeAndPlan = (topic, level, goal, days) =>
   axios.post(`${BASE}/analyze`, { topic, level, goal, days });

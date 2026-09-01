@@ -68,6 +68,9 @@ STRICT Rules:
 """
 
 def run_planner(days: int = 5) -> dict:
+    if days < 2:
+        days = 5  # guard against 0/negative days reaching the agent
+
     skill_data = get_value("skill_analysis")
     if not skill_data:
         return None
