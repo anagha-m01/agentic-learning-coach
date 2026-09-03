@@ -1,4 +1,6 @@
 fastapi
-uvicorn
+uvicorn[standard]
 groq
 python-dotenv
+slowapi
+pydantic>=2.6

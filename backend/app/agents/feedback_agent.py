@@ -42,13 +42,9 @@ Rules:
 """
 
 
-def get_next_topic_by_day(completed_day: int):
-    """
-    Pure index-based lookup — no string matching.
-    Pass the day number just completed; returns topic for the NEXT day.
-    Returns None when there are no more days (plan complete).
-    """
-    plan_data = get_value("study_plan")
+def get_next_topic_by_day(session_id: str, completed_day: int):
+    """Return the next day's topic, or None if plan is complete."""
+    plan_data = get_value(session_id, "study_plan")
     if not plan_data:
         return None
 
@@ -59,7 +55,7 @@ def get_next_topic_by_day(completed_day: int):
         if day["day"] == next_day_num:
             return day["topic"]
 
-    return None  # no more days
+    return None  # No more days
 
 
 def get_grade(percentage: int) -> str:
@@ -111,20 +107,20 @@ Wrong answers ({len(wrong)}):
     return report
 
 
-def run_feedback_agent() -> dict:
-    evaluation = get_value("evaluation")
-    current    = get_value("current_topic")
-    skill_data = get_value("skill_analysis")
+def run_feedback_agent(session_id: str) -> dict:
+    evaluation = get_value(session_id, "evaluation")
+    current    = get_value(session_id, "current_topic")
+    skill_data = get_value(session_id, "skill_analysis")
 
     if not evaluation:
         return {"decision": "repeat_topic", "feedback": "", "reason": "", "next_topic": current}
 
-    # Read the current saved day ONCE — used throughout this function
-    saved_day    = get_value("current_day") or 0
+    # Current day index
+    saved_day    = get_value(session_id, "current_day") or 0
     is_practice  = "practice" in (current or "").lower()
 
-    # Check if next day exists (index-based, no string matching)
-    next_topic_preview = get_next_topic_by_day(saved_day)
+    # Check for next day in plan
+    next_topic_preview = get_next_topic_by_day(session_id, saved_day)
     is_last_day        = (next_topic_preview is None) and not is_practice
 
     if is_practice or is_last_day:
@@ -135,11 +131,11 @@ def run_feedback_agent() -> dict:
             "feedback":   report.get("summary", ""),
             "report":     report
         }
-        update_data("feedback", result)
-        update_data("final_report", report)
+        update_data(session_id, "feedback", result)
+        update_data(session_id, "final_report", report)
         return result
 
-    # Normal day: ask LLM for pass / repeat / revise decision
+    # Get LLM progression decision
     user_message = f"""
 Current topic: {current}
 Evaluation results: {json.dumps(evaluation, indent=2)}
@@ -155,21 +151,20 @@ Evaluation results: {json.dumps(evaluation, indent=2)}
     decision = result.get("decision")
 
     if decision == "next_topic":
-        # ✅ FIX 1: increment day FIRST, then look up the topic for that new day
+        # Advance to next day index
         next_day   = saved_day + 1
-        update_data("current_day", next_day)           # save the day we're moving TO
+        update_data(session_id, "current_day", next_day)
 
-        next_topic = get_next_topic_by_day(next_day)   # look up topic for next_day + 1
+        next_topic = get_next_topic_by_day(session_id, next_day)
         result["next_topic"] = next_topic
 
-        # ✅ FIX 2: persist next_topic on backend so /questions always serves correct topic
-        # (main.py reads current_topic from the file, ignoring req.topic)
+        # Persist next topic for subsequent requests
         if next_topic:
-            update_data("current_topic", next_topic)
+            update_data(session_id, "current_topic", next_topic)
 
     else:
-        # repeat_topic or revise_topic — stay on same topic, don't advance day
+        # Keep current topic and day on repeat or revise
         result["next_topic"] = current
 
-    update_data("feedback", result)
+    update_data(session_id, "feedback", result)
     return result

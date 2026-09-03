@@ -9,6 +9,8 @@ export default function Questions({ topic, onDone }) {
   const [error,     setError]     = useState("");
 
   useEffect(() => {
+    // Reset state before refetching when the topic changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setAnswers({});
     getQuestions(topic)

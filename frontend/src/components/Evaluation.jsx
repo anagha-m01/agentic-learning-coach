@@ -27,7 +27,7 @@ export default function Evaluation({ evaluation, topic, onNext }) {
       <h3>Question Breakdown</h3>
       <div className="results-list">
         {results?.map(r => {
-          // Look up the full option text for learner's answer and correct answer
+          // Resolve option texts
           const options = r.options || {};
           const learnerOptionText = options[r.learner_answer] ?? "";
           const correctOptionText = options[r.correct_answer] ?? "";
@@ -37,12 +37,12 @@ export default function Evaluation({ evaluation, topic, onNext }) {
               <span className="result-icon">{r.is_correct ? "✓" : "✗"}</span>
               <div style={{ flex: 1 }}>
 
-                {/* Question text */}
+                {/* Question */}
                 <p style={{ marginBottom: "8px", fontWeight: 500, lineHeight: 1.5 }}>
                   Q{r.question_id}: {r.question}
                 </p>
 
-                {/* For wrong answers: show both answers with full text */}
+                {/* Incorrect answer details */}
                 {!r.is_correct && (
                   <div style={{ marginBottom: "8px", fontSize: "13px", display: "flex", flexDirection: "column", gap: "4px" }}>
                     <span style={{ color: "#f87171" }}>
@@ -56,7 +56,7 @@ export default function Evaluation({ evaluation, topic, onNext }) {
                   </div>
                 )}
 
-                {/* Explanation for ALL questions (correct and wrong) */}
+                {/* Explanation */}
                 {r.explanation && (
                   <p style={{
                     fontSize: "13px",
