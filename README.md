@@ -2,8 +2,8 @@
 
 An AI-powered learning coach that builds a personalized, day-by-day study plan for any topic, then quizzes you and adapts as you go — powered by a pipeline of cooperating LLM agents rather than a single prompt.
 
-**Live demo:** _add your deployed link here after following [Deployment](#deployment) below_
-**API docs:** _`<your-render-url>`/docs_
+**Live demo:** https://agentic-learning-coach.vercel.app
+**API docs:** https://agentic-learning-coach.onrender.com/docs
 
 ---
 
