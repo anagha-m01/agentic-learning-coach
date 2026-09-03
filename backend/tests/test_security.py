@@ -120,4 +120,23 @@ def test_security_headers_present(client):
     resp = client.get("/health")
     assert resp.headers.get("x-content-type-options") == "nosniff"
     assert resp.headers.get("x-frame-options") == "DENY"
+
+
+def test_docs_disabled_in_production(rebuilt_app):
+    client = rebuilt_app(
+        ENVIRONMENT="production",
+        FRONTEND_ORIGINS="https://my-app.vercel.app",
+    )
+
+    assert client.get("/docs").status_code == 404
+    assert client.get("/redoc").status_code == 404
+    assert client.get("/openapi.json").status_code == 404
+
+
+def test_docs_available_in_development(rebuilt_app):
+    client = rebuilt_app(ENVIRONMENT="development")
+
+    assert client.get("/docs").status_code == 200
+    assert client.get("/redoc").status_code == 200
+    assert client.get("/openapi.json").status_code == 200
     

@@ -18,6 +18,9 @@ from app.api.routes import router, limiter  # noqa: E402 (imported after config)
 app = FastAPI(
     title="Agentic Learning Coach API",
     version="1.0.0",
+    docs_url=None if settings.is_production else "/docs",
+    redoc_url=None if settings.is_production else "/redoc",
+    openapi_url=None if settings.is_production else "/openapi.json",
 )
 
 app.state.limiter = limiter
