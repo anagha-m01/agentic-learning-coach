@@ -9,9 +9,7 @@ export default function Questions({ topic, onDone }) {
   const [error,     setError]     = useState("");
 
   useEffect(() => {
-    // Resetting loading/answers before re-fetching on topic change is the
-    // standard data-fetching pattern; the set-state-in-effect rule is new
-    // and contested for exactly this case (react/react issue #34743).
+    // Reset state before refetching when the topic changes.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setAnswers({});
