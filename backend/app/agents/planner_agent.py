@@ -1,6 +1,9 @@
 import json
 from app.core.llm_client import call_llm
+from app.core.logging_config import get_logger
 from app.storage.json_store import update_data, get_value
+
+logger = get_logger(__name__)
 
 def build_prompt(days: int) -> str:
     learning_days = days - 1
@@ -67,11 +70,11 @@ STRICT Rules:
 - Output ONLY the JSON. No extra text.
 """
 
-def run_planner(days: int = 5) -> dict:
+def run_planner(session_id: str, days: int = 5) -> dict:
     if days < 2:
-        days = 5  # guard against 0/negative days reaching the agent
+        days = 5  # Enforce minimum days
 
-    skill_data = get_value("skill_analysis")
+    skill_data = get_value(session_id, "skill_analysis")
     if not skill_data:
         return None
 
@@ -103,9 +106,9 @@ def run_planner(days: int = 5) -> dict:
 
     plan = result.get("plan", [])
 
-    # Retry if wrong number of days
+    # Retry if plan length mismatches days
     if len(plan) != days:
-        print(f"Warning: Got {len(plan)} days, expected {days}. Retrying...")
+        logger.warning(f"planner: got {len(plan)} days, expected {days}, retrying")
         response2 = call_llm(system_prompt,
             f"Previous attempt gave wrong number of days.\n"
             f"YOU MUST RETURN EXACTLY {days} DAYS.\n"
@@ -118,11 +121,11 @@ def run_planner(days: int = 5) -> dict:
         except json.JSONDecodeError:
             pass
 
-    # Trim if too many
+    # Trim excess days
     if len(plan) > days:
         plan = plan[:days]
 
-    # Pad if still too few
+    # Pad missing days
     while len(plan) < days:
         plan.append({
             "day": len(plan) + 1,
@@ -130,11 +133,11 @@ def run_planner(days: int = 5) -> dict:
             "description": "Continue practising concepts from previous days"
         })
 
-    # Force correct day numbers
+    # Renumber days sequentially
     for i, day in enumerate(plan):
         day["day"] = i + 1
 
-    # Force last day to be Practice Test
+    # Ensure final day is practice test
     if not any(w in plan[-1]["topic"].lower() for w in ["practice", "revision", "test"]):
         plan[-1]["topic"] = "Practice Test"
         plan[-1]["description"] = "Revise all topics and take a full practice test"
@@ -142,6 +145,6 @@ def run_planner(days: int = 5) -> dict:
     result["plan"]       = plan
     result["total_days"] = len(plan)
 
-    update_data("total_days", len(plan))
-    update_data("study_plan", result)
+    update_data(session_id, "total_days", len(plan))
+    update_data(session_id, "study_plan", result)
     return result

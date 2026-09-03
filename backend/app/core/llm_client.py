@@ -1,16 +1,19 @@
-import os
 import time
+
 from groq import Groq
-from dotenv import load_dotenv
 
-load_dotenv()
+from app.core.config import settings
+from app.core.logging_config import get_logger
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+logger = get_logger(__name__)
+
+client = Groq(api_key=settings.groq_api_key)
+
 
 def call_llm(system_prompt: str, user_message: str, model: str = None) -> str:
-    model = model or os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+    model = model or settings.groq_model
     retries = 3
-    wait    = 10  # seconds
+    wait = 10  # seconds
 
     for attempt in range(retries):
         try:
@@ -27,9 +30,10 @@ def call_llm(system_prompt: str, user_message: str, model: str = None) -> str:
         except Exception as e:
             error = str(e)
             if "rate_limit_exceeded" in error and attempt < retries - 1:
-                print(f"Rate limit hit. Waiting {wait} seconds before retry...")
+                logger.warning(f"LLM rate limit hit, retrying in {wait}s (attempt {attempt + 1}/{retries})")
                 time.sleep(wait)
-                wait *= 2  # double wait each retry
+                wait *= 2  # Exponential backoff
             else:
-                raise e
+                logger.error(f"LLM call failed: {error}")
+                raise
             

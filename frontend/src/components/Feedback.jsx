@@ -23,7 +23,7 @@ export default function Feedback({ onContinue, onReset }) {
 
   const { decision, next_topic, feedback, report } = fb || {};
 
-  // ✅ Practice test complete — show inline report then let them start fresh
+  // Practice test completion report
   if (decision === "complete") {
     const { grade, score, total, percentage, strengths, improvements, next_steps } = report || {};
 
@@ -37,7 +37,7 @@ export default function Feedback({ onContinue, onReset }) {
       <div className="card" style={{ gap: "20px" }}>
         <h2>🎓 Practice Test Complete!</h2>
 
-        {/* Score row */}
+        {/* Scores */}
         <div className="metrics">
           <div className="metric">
             <span className="metric-label">Grade</span>
@@ -132,7 +132,7 @@ export default function Feedback({ onContinue, onReset }) {
     );
   }
 
-  // Normal day feedback
+  // Daily feedback
   const isPlanComplete = decision === "next_topic" && next_topic === null;
 
   const decisionLabel = {

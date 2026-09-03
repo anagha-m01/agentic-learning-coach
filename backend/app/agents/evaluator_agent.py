@@ -25,9 +25,9 @@ You must output ONLY a valid JSON object like this:
 Output ONLY the JSON. No explanation, no extra text.
 """
 
-def run_evaluator(answers: dict) -> dict:
-    questions_data = get_value("current_questions")
-    topic = get_value("current_topic")
+def run_evaluator(session_id: str, answers: dict) -> dict:
+    questions_data = get_value(session_id, "current_questions")
+    topic = get_value(session_id, "current_topic")
 
     if not questions_data:
         return {"error": "No questions found", "score": 0, "total": 0, "percentage": 0, "results": []}
@@ -36,18 +36,20 @@ def run_evaluator(answers: dict) -> dict:
     if not questions:
         return {"error": "Empty questions", "score": 0, "total": 0, "percentage": 0, "results": []}
 
-    # Build a lookup map from question id to full question object (for options)
+    # Map question IDs to question objects
     questions_map = {str(q["id"]): q for q in questions}
 
-    # --- Step 1: Score in Python directly, no LLM ---
+    # Score answers directly
     score = 0
     total = len(questions)
     qa_for_llm = []
 
     for q in questions:
         qid         = str(q["id"])
-        correct     = q.get("answer", "").strip().upper()
-        learner_ans = answers.get(qid, "").strip().upper()
+        correct     = str(q.get("answer", "") or "").strip().upper()
+        raw_answer  = answers.get(qid, "")
+        # Coerce answer value to string
+        learner_ans = str(raw_answer if raw_answer is not None else "").strip().upper()
         is_correct  = learner_ans == correct
 
         if is_correct:
@@ -64,7 +66,7 @@ def run_evaluator(answers: dict) -> dict:
 
     percentage = round((score / total) * 100) if total > 0 else 0
 
-    # --- Step 2: Ask LLM only for explanations ---
+    # Generate explanations via LLM
     user_message = f"Topic: {topic}\nQuestions with results:\n{json.dumps(qa_for_llm, indent=2)}"
     response = call_llm(EXPLANATION_PROMPT, user_message)
 
@@ -77,7 +79,7 @@ def run_evaluator(answers: dict) -> dict:
             "overall_feedback": ""
         }
 
-    # --- Step 3: Merge Python scores + LLM explanations + options ---
+    # Combine scores, explanations, and options
     explanations = {
         str(r["question_id"]): r["explanation"]
         for r in llm_result.get("results", [])
@@ -92,7 +94,7 @@ def run_evaluator(answers: dict) -> dict:
             "question_id":   q["question_id"],
             "type":          q["type"],
             "question":      q["question"],
-            "options":       original_q.get("options", {}),  # ✅ full A/B/C/D option texts
+            "options":       original_q.get("options", {}),  # Option texts
             "learner_answer": q["learner_answer"],
             "correct_answer": q["correct_answer"],
             "is_correct":    q["is_correct"],
@@ -107,5 +109,5 @@ def run_evaluator(answers: dict) -> dict:
         "overall_feedback": llm_result.get("overall_feedback", "")
     }
 
-    update_data("evaluation", result)
+    update_data(session_id, "evaluation", result)
     return result

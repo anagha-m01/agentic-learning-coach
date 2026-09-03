@@ -11,7 +11,7 @@ export default function App() {
   const [stage,      setStage] = useState("intake");
   const [skillData,  setSkill] = useState(null);
   const [planData,   setPlan]  = useState(null);
-  const [questions,  setQs]    = useState(null);
+  const [, setQs]    = useState(null);
   const [evaluation, setEval]  = useState(null);
   const [topic,      setTopic] = useState("");
   const [round,      setRound] = useState(0);
@@ -77,13 +77,12 @@ export default function App() {
         )}
 
         {stage === "feedback" && (
-          // ✅ Feedback handles "complete" decision internally now
-          // onContinue only fires for normal day navigation
+          // Handle feedback progression and completion
           <Feedback
             key={round}
             onContinue={(nextTopic) => {
               if (nextTopic === null) {
-                  setStage("feedback"); // stays on feedback — already showing "complete" card
+                  setStage("feedback"); // Stay on completion screen
                   return;
               }
               setTopic(nextTopic);

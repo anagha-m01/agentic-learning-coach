@@ -1,6 +1,9 @@
 import json
 from app.core.llm_client import call_llm
+from app.core.logging_config import get_logger
 from app.storage.json_store import update_data, get_value
+
+logger = get_logger(__name__)
 
 SYSTEM_PROMPT = """
 You are a Question Generator Agent for an AI learning coach.
@@ -96,7 +99,7 @@ def get_topic_mix_instruction(day_number: int, total_days: int, plan_data: dict)
     )
 
 def is_valid_mcq(q: dict) -> bool:
-    """Check if a question is a proper MCQ with A/B/C/D options and a valid answer."""
+    """Validate question has required MCQ options and answer."""
     options = q.get("options", {})
     answer  = q.get("answer", "").strip().upper()
     return (
@@ -107,30 +110,30 @@ def is_valid_mcq(q: dict) -> bool:
     )
 
 def is_open_ended(q: dict) -> bool:
-    """Detect open-ended / write-code questions that slipped through."""
+    """Check whether a question is open-ended."""
     bad_phrases = [
         "write a", "write the", "implement", "create a", "code a",
         "develop a", "build a", "program a", "design a", "construct a",
         "explain how", "describe how", "list the steps"
     ]
     question_text = q.get("question", "").lower()
-    # If it has no options at all, it's definitely open-ended
+    # Missing options implies open-ended
     if not q.get("options"):
         return True
-    # If the question starts with any bad phrase, it's open-ended
+    # Check forbidden prefix phrases
     return any(question_text.startswith(phrase) for phrase in bad_phrases)
 
 def fix_question_numbering(questions: list) -> list:
-    """Ensure question IDs are sequential 1..N."""
+    """Ensure sequential question IDs."""
     for i, q in enumerate(questions):
         q["id"] = i + 1
     return questions
 
-def run_question_generator(current_topic: str = None) -> dict:
-    skill_data  = get_value("skill_analysis")
-    current_day = get_value("current_day") or 0
-    plan_data   = get_value("study_plan")
-    total_days  = get_value("total_days") or 5
+def run_question_generator(session_id: str, current_topic: str = None) -> dict:
+    skill_data  = get_value(session_id, "skill_analysis")
+    current_day = get_value(session_id, "current_day") or 0
+    plan_data   = get_value(session_id, "study_plan")
+    total_days  = get_value(session_id, "total_days") or 5
 
     day_number = current_day + 1
 
@@ -188,23 +191,23 @@ Generate exactly {concept_count} concept MCQ and {code_count} code output MCQ qu
 
     questions = result.get("questions", [])
 
-    # ── POST-PROCESSING ENFORCER ──────────────────────────────────────────
-    # Step 1: Force day 1 to have zero code questions
+    # Post-processing validation
+    # Ensure day 1 has no code output questions
     if day_number == 1:
         for q in questions:
             if q.get("type") == "code_output":
                 q["type"] = "mcq"
                 q.pop("code", None)
 
-    # Step 2: Drop open-ended questions entirely (no options / write-code style)
+    # Remove open-ended questions
     questions = [q for q in questions if not is_open_ended(q)]
 
-    # Step 3: Drop any remaining questions that aren't valid MCQ
+    # Filter out invalid MCQs
     questions = [q for q in questions if is_valid_mcq(q)]
 
-    # Step 4: If we lost questions, retry once with a stricter prompt
+    # Retry prompt if question count is insufficient
     if len(questions) < 6:
-        print(f"Warning: Only {len(questions)} valid MCQ after filtering. Retrying...")
+        logger.warning(f"question_agent: only {len(questions)} valid MCQ after filtering, retrying")
         retry_message = (
             f"Previous attempt produced invalid questions (open-ended or missing options).\n"
             f"Topic: {current_topic}, Skill level: {level}\n"
@@ -220,7 +223,7 @@ Generate exactly {concept_count} concept MCQ and {code_count} code output MCQ qu
             retry_qs      = retry_result.get("questions", [])
             retry_qs      = [q for q in retry_qs if not is_open_ended(q)]
             retry_qs      = [q for q in retry_qs if is_valid_mcq(q)]
-            # Merge: keep original valid ones + fill from retry
+            # Merge valid questions from retry
             existing_ids = {q.get("id") for q in questions}
             for q in retry_qs:
                 if len(questions) >= 6:
@@ -230,11 +233,11 @@ Generate exactly {concept_count} concept MCQ and {code_count} code output MCQ qu
         except json.JSONDecodeError:
             pass
 
-    # Step 5: Cap at 6 and fix numbering
+    # Cap at 6 questions and renumber
     questions = questions[:6]
     questions = fix_question_numbering(questions)
 
     result["questions"] = questions
-    update_data("current_questions", result)
-    update_data("current_topic", current_topic)
+    update_data(session_id, "current_questions", result)
+    update_data(session_id, "current_topic", current_topic)
     return result

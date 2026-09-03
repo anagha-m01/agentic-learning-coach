@@ -2,17 +2,28 @@ import axios from "axios";
 
 const BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
+// Include session cookies with cross-origin requests
+const api = axios.create({
+  baseURL: BASE,
+  withCredentials: true,
+});
+
 export const analyzeAndPlan = (topic, level, goal, days) =>
-  axios.post(`${BASE}/analyze`, { topic, level, goal, days });
+  api.post(`/analyze`, { topic, level, goal, days });
 
 export const getQuestions = (topic) =>
-  axios.post(`${BASE}/questions`, { topic }); 
+  api.post(`/questions`, { topic });
 
 export const submitAnswers = (answers) =>
-  axios.post(`${BASE}/evaluate`, { answers });
+  api.post(`/evaluate`, { answers });
 
 export const getFeedback = () =>
-  axios.post(`${BASE}/feedback`);
+  api.post(`/feedback`);
 
 export const resetSession = () =>
-  axios.post(`${BASE}/reset`);
+  api.post(`/reset`);
+
+export const getState = () =>
+  api.get(`/state`);
+
+export default api;

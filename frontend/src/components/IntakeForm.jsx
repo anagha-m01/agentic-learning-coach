@@ -17,7 +17,7 @@ export default function IntakeForm({ onDone }) {
     try {
       const res = await analyzeAndPlan(topic, level, goal, days);
       onDone(res.data.skill, res.data.plan);
-    } catch (err) {
+    } catch {
       setError("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
