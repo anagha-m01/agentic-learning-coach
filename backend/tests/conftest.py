@@ -42,11 +42,20 @@ def mock_llm(monkeypatch):
 
     def _default_response(system_prompt, user_message):
         if "Skill Analyzer" in system_prompt:
-            # Echo requested topic for session isolation testing
+            # Echo requested topic for session isolation testing. Topic is
+            # interpolated via wrap_data(), i.e.:
+            #   Topic: <<<DATA>>>
+            #   <the actual topic>
+            #   <<<END_DATA>>>
             topic = "Python"
-            for line in user_message.splitlines():
+            lines = user_message.splitlines()
+            for i, line in enumerate(lines):
                 if line.startswith("Topic:"):
-                    topic = line.split("Topic:", 1)[1].strip()
+                    after = line.split("Topic:", 1)[1].strip()
+                    if after == "<<<DATA>>>" and i + 1 < len(lines):
+                        topic = lines[i + 1].strip()
+                    else:
+                        topic = after
                     break
             return _json.dumps({
                 "topic": topic, "skill_level": "beginner",
@@ -74,9 +83,8 @@ def mock_llm(monkeypatch):
                 "improvements": ["Practice more edge cases"],
                 "next_steps": "Review the topics you missed."
             })
-        if "Feedback and Decision Agent" in system_prompt:
+        if "Feedback Agent" in system_prompt:
             return _json.dumps({
-                "decision": "next_topic",
                 "feedback": "Nice work, moving on!",
                 "reason": "Scored above the threshold."
             })
@@ -94,3 +102,4 @@ def mock_llm(monkeypatch):
         monkeypatch.setattr(mod, "call_llm", _fake_call_llm)
 
     return calls
+    
