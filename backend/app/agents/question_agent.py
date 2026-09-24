@@ -94,12 +94,16 @@ STRICT RULES — violations will break the app:
 """
 
 
-def get_question_distribution(day_number: int, total_days: int) -> tuple:
+def get_question_distribution(day_number: int, total_days: int, level: str = "beginner") -> tuple:
     if total_days <= 1:
         return (6, 0)
     progress = (day_number - 1) / (total_days - 1)
     if progress == 0:
-        return (6, 0)
+        # Day 1: a true beginner has no foundation yet to read code, but an
+        # intermediate/advanced learner (whose Day 1 may already cover
+        # non-trivial material -- see planner_agent's level-aware pacing)
+        # can handle a couple of code questions from the very first day.
+        return (6, 0) if level == "beginner" else (4, 2)
     elif progress < 0.4:
         return (6, 0)
     elif progress < 0.7:
@@ -182,8 +186,25 @@ def fix_question_numbering(questions: list) -> list:
     return questions
 
 
+def _dedupe_text(q: dict) -> str:
+    """Text used for both near-duplicate comparison and asked-question
+    history. For code_output questions, the visible "question" field is
+    almost always the same generic stem ("What is the output of the
+    following code?") across many unrelated questions -- concatenating it
+    with the code still lets that shared stem dominate a fuzzy-match
+    comparison and cause false-positive duplicates, so the code itself
+    (which is what actually makes two code questions the same or
+    different) is used on its own whenever present.
+    """
+    code = str(q.get("code") or "").strip()
+    if code:
+        return code
+    return str(q.get("question") or "").strip()
+
+
 def _clean_and_validate(raw_questions: list, current_topic: str, day_number: int,
-                         history_normalized: list, accepted_normalized: list) -> list:
+                         history_normalized: list, accepted_normalized: list,
+                         level: str = "beginner") -> list:
     """Apply type coercion, MCQ validation, and duplicate filtering in one pass.
     Mutates accepted_normalized as a side effect so repeated calls (initial +
     retry) dedupe against each other, not just against prior sessions."""
@@ -198,8 +219,11 @@ def _clean_and_validate(raw_questions: list, current_topic: str, day_number: int
             q["type"] = "mcq"
             q.pop("code", None)
 
-        # Day 1 never shows code -- learner has no foundation to read it yet.
-        if day_number == 1 and q.get("type") == "code_output":
+        # A true beginner has no foundation yet to read code on Day 1 --
+        # but this must NOT apply to intermediate/advanced learners, whose
+        # Day 1 content is already more advanced (see planner_agent's
+        # level-aware pacing), and who can handle code questions from the start.
+        if day_number == 1 and level == "beginner" and q.get("type") == "code_output":
             q["type"] = "mcq"
             q.pop("code", None)
 
@@ -209,11 +233,11 @@ def _clean_and_validate(raw_questions: list, current_topic: str, day_number: int
         if not str(q.get("concept", "")).strip():
             q["concept"] = current_topic
 
-        qtext = q.get("question", "")
-        if is_near_duplicate(qtext, history_normalized) or is_near_duplicate(qtext, accepted_normalized):
+        dedupe_text = _dedupe_text(q)
+        if is_near_duplicate(dedupe_text, history_normalized) or is_near_duplicate(dedupe_text, accepted_normalized):
             continue
 
-        accepted_normalized.append(normalize_question_text(qtext))
+        accepted_normalized.append(normalize_question_text(dedupe_text))
         kept.append(q)
     return kept
 
@@ -240,7 +264,7 @@ def run_question_generator(session_id: str, current_topic: str = None) -> dict:
     strong_concepts = (get_value(session_id, "strong_concepts") or [])[:_MAX_CONCEPTS_IN_PROMPT]
     asked_questions = get_value(session_id, "asked_questions") or []
 
-    concept_count, code_count = get_question_distribution(day_number, total_days)
+    concept_count, code_count = get_question_distribution(day_number, total_days, level)
     mix_instruction = get_topic_mix_instruction(day_number, total_days, plan_data)
 
     stored_day_type = get_value(session_id, "current_day_type")
@@ -327,7 +351,7 @@ Generate exactly {concept_count} concept MCQ and {code_count} code output MCQ qu
     accepted_normalized = []
     questions = _clean_and_validate(
         result.get("questions", []), current_topic, day_number,
-        history_normalized, accepted_normalized,
+        history_normalized, accepted_normalized, level,
     )
 
     # Retry prompt if question count is insufficient (malformed, open-ended,
@@ -352,7 +376,7 @@ Generate exactly {concept_count} concept MCQ and {code_count} code output MCQ qu
             retry_result  = json.loads(retry_cleaned)
             retry_qs      = _clean_and_validate(
                 retry_result.get("questions", []), current_topic, day_number,
-                history_normalized, accepted_normalized,
+                history_normalized, accepted_normalized, level,
             )
             # Merge valid questions from retry
             existing_ids = {q.get("id") for q in questions}
@@ -370,9 +394,11 @@ Generate exactly {concept_count} concept MCQ and {code_count} code output MCQ qu
     questions = fix_question_numbering(questions)
 
     # Remember these questions were asked so future quizzes (this session)
-    # don't repeat or closely rephrase them.
+    # don't repeat or closely rephrase them. Uses the same code-aware text
+    # as duplicate detection so a future code question is compared against
+    # the actual snippet, not just the shared "What is the output?" stem.
     if questions:
-        updated_history = (asked_questions + [q.get("question", "") for q in questions])[-_MAX_ASKED_HISTORY:]
+        updated_history = (asked_questions + [_dedupe_text(q) for q in questions])[-_MAX_ASKED_HISTORY:]
         update_data(session_id, "asked_questions", updated_history)
 
     result["questions"]  = questions
@@ -383,4 +409,3 @@ Generate exactly {concept_count} concept MCQ and {code_count} code output MCQ qu
     update_data(session_id, "current_topic", current_topic)
     update_data(session_id, "current_day_type", day_type)
     return result
-    

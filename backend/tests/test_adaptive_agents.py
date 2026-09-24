@@ -22,11 +22,12 @@ from app.agents.planner_agent import build_prompt as planner_build_prompt, run_p
 from app.agents.question_agent import (
     SYSTEM_PROMPT as QUESTION_SYSTEM_PROMPT,
     _clean_and_validate,
+    get_question_distribution,
     is_valid_mcq,
     run_question_generator,
 )
 from app.agents.skill_analyzer import SYSTEM_PROMPT as SKILL_SYSTEM_PROMPT, run_skill_analyzer
-from app.core.adaptive import DAY_TYPE_LEARNING, DAY_TYPE_PRACTICE_TEST
+from app.core.adaptive import DAY_TYPE_LEARNING, DAY_TYPE_PRACTICE_TEST, normalize_question_text
 from app.core.prompt_guards import wrap_data
 from app.storage.json_store import get_value, update_data
 
@@ -399,11 +400,61 @@ def test_code_output_without_code_field_is_downgraded_to_mcq():
     assert "code" not in kept[0]
 
 
-def test_day_one_code_output_is_always_downgraded_to_mcq():
+def test_day_one_code_output_is_downgraded_for_beginner_only():
     raw = [{"id": 1, "type": "code_output", "question": "What prints?", "answer": "B",
             "code": "print(1)", "options": {"A": "1", "B": "2", "C": "3", "D": "4"}}]
-    kept = _clean_and_validate(raw, "Python", day_number=1, history_normalized=[], accepted_normalized=[])
+    kept = _clean_and_validate(raw, "Python", day_number=1, history_normalized=[],
+                                accepted_normalized=[], level="beginner")
     assert kept[0]["type"] == "mcq"
+    assert "code" not in kept[0]
+
+
+def test_day_one_code_output_is_kept_for_intermediate_and_advanced():
+    for level in ("intermediate", "advanced"):
+        raw = [{"id": 1, "type": "code_output", "question": "What prints?", "answer": "B",
+                "code": "print(1)", "options": {"A": "1", "B": "2", "C": "3", "D": "4"}}]
+        kept = _clean_and_validate(raw, "Python", day_number=1, history_normalized=[],
+                                    accepted_normalized=[], level=level)
+        assert kept[0]["type"] == "code_output", f"code question wrongly stripped for {level}"
+        assert kept[0]["code"] == "print(1)"
+
+
+def test_get_question_distribution_forces_no_code_on_day_one_for_beginner():
+    assert get_question_distribution(1, 5, "beginner") == (6, 0)
+
+
+def test_get_question_distribution_allows_code_on_day_one_for_non_beginner():
+    assert get_question_distribution(1, 5, "intermediate") == (4, 2)
+    assert get_question_distribution(1, 5, "advanced") == (4, 2)
+
+
+def test_duplicate_detection_does_not_false_positive_on_shared_code_question_stem():
+    # Two entirely different code snippets sharing the same generic stem
+    # text must NOT be flagged as duplicates of each other.
+    history_normalized = []
+    accepted_normalized = []
+    q1 = {"id": 1, "type": "code_output", "question": "What is the output of the following code?",
+          "code": "x = [1, 2, 3]\nprint(x[1])", "concept": "list indexing",
+          "options": {"A": "1", "B": "2", "C": "3", "D": "Error"}, "answer": "B"}
+    q2 = {"id": 2, "type": "code_output", "question": "What is the output of the following code?",
+          "code": "d = {'a': 1}\nprint(d.get('b', 0))", "concept": "dict.get",
+          "options": {"A": "1", "B": "0", "C": "None", "D": "Error"}, "answer": "B"}
+    kept = _clean_and_validate([q1, q2], "Python", day_number=3,
+                                history_normalized=history_normalized,
+                                accepted_normalized=accepted_normalized)
+    assert len(kept) == 2  # both kept -- previously the second was wrongly dropped as a "duplicate"
+
+
+def test_duplicate_detection_still_catches_genuinely_repeated_code_question():
+    history_normalized = [normalize_question_text("x = [1, 2, 3]\nprint(x[1])")]
+    accepted_normalized = []
+    q = {"id": 1, "type": "code_output", "question": "What is the output of the following code?",
+         "code": "x = [1, 2, 3]\nprint(x[1])", "concept": "list indexing",
+         "options": {"A": "1", "B": "2", "C": "3", "D": "Error"}, "answer": "B"}
+    kept = _clean_and_validate([q], "Python", day_number=3,
+                                history_normalized=history_normalized,
+                                accepted_normalized=accepted_normalized)
+    assert kept == []  # correctly dropped -- same code, same question, genuine repeat
 
 
 def test_missing_concept_falls_back_to_topic():
